@@ -1,0 +1,62 @@
+"const HttpsProxyAgent = require('https-proxy-agent');
+const url = require('url')
+const https = require('https')
+
+let targetUrl = 'https://api.e-stat.go.jp/rest/2.1/app/getStatsData?appId='
+const stat_info = '&lang=J&statsDataId=0003412318&metaGetFlg=Y&cntGetFlg=N&sectionHeaderFlg=1'
+let proxyServer = 'http://10.111.240.198:8080'
+// let proxyServer = 'http://pct-cmzlb01e.nmoc.eneos.net:8080'
+
+const AWS = require('aws-sdk');
+AWS.config.update({ region: 'ap-northeast-1' });
+
+const functionName = process.env.AWS_LAMBDA_FUNCTION_NAME;
+const encrypted = process.env['apikey'];
+let decrypted;
+
+
+exports.handler = async (event) => {
+    if (!decrypted) {
+        // Decrypt code should run once and variables stored outside of the
+        // function handler so that these are decrypted once per container
+        const kms = new AWS.KMS({endpoint: ""https://kms.ap-northeast-1.amazonaws.com""});
+        try {
+            const req = {
+                CiphertextBlob: Buffer.from(encrypted, 'base64'),
+                EncryptionContext: { LambdaFunctionName: functionName },
+            };
+            const data = await kms.decrypt(req).promise();
+            decrypted = data.Plaintext.toString('ascii');
+            // console.log(""apikey is"", decrypted);
+        } catch (err) {
+            console.log('Decrypt error:', err);
+            throw err;
+        }
+    }
+    targetUrl += decrypted + stat_info;
+    console.log(targetUrl);
+    // return targetUrl;
+    var agent = new HttpsProxyAgent(proxyServer);
+    var options = url.parse(targetUrl);
+    options.agent = agent;
+    
+    var completeResponse = """";
+
+    const promise = new Promise(function(resolve, reject) {
+      https.get(options, (res) => {
+          res.setEncoding(""utf8"");
+          res.on(""data"", function(chunk) {
+             completeResponse += chunk;
+          });
+          res.on(""end"", function(chunk) {
+             resolve(completeResponse)
+          });
+        }).on('error', (e) => {
+          reject(Error(e))
+        })
+      })
+    return promise
+    
+};
+"
+
